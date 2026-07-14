@@ -20,7 +20,11 @@ It finds meaning with Gemini embeddings (via Pinecone) and grounds every answer 
   3) 아래 placeholder 줄을 그 링크로 교체
 -->
 
-> Demo video coming soon — drop your `.mp4` here in the GitHub web editor.
+
+
+https://github.com/user-attachments/assets/ad6ba753-fcc5-43e4-9f31-5541d50d49ee
+
+
 
 ---
 
