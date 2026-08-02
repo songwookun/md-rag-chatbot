@@ -1,0 +1,12 @@
+{
+  // 이 워크스페이스의 기본 파이썬 = backend 가상환경
+  // notebooks/ 와 backend/ 가 같은 환경을 쓰도록 고정한다.
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
+
+  // 노트북 커널을 매번 고르지 않도록 인터프리터 탐색 경로에 포함
+  "python.venvPath": "${workspaceFolder}/backend",
+  "python.terminal.activateEnvironment": true,
+
+  // 노트북 저장 시 출력을 유지 (실패 셀 기록이 이 프로젝트의 목적)
+  "jupyter.interactiveWindow.textEditor.executeSelection": true
+}

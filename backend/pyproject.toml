@@ -21,6 +21,16 @@ dev = [
     "respx>=0.21",              # httpx 호출 모킹 (GitHub 어댑터 테스트용)
 ]
 
+# 실험 노트북(../notebooks/)용. 백엔드 실행에는 불필요
+lab = [
+    "jupyterlab>=4.2",
+    "ipykernel>=6.29",
+    "numpy>=2.0",               # 코사인 유사도 계산
+    "pandas>=2.2",              # 결과 표
+    "matplotlib>=3.9",          # 점수 분포 시각화
+    "python-dotenv>=1.0",       # 노트북에서 .env 로드
+]
+
 # ---------------------------------------------------------------
 # 설치 (backend/ 안에서):
 #   python -m venv .venv && source .venv/bin/activate
