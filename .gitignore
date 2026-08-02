@@ -29,7 +29,9 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files
-.env*.local
+.env
+.env.*
+!.env.example
 
 # vercel
 .vercel
@@ -39,3 +41,9 @@ yarn-error.log*
 next-env.d.ts
 
 architecture.html
+
+# 작업 노트 — 공개 대상 아님 (블로그 원재료)
+/docs/
+
+# Claude 메모리 / 로컬 설정 — 공개 대상 아님
+.claude/
