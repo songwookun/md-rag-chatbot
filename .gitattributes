@@ -1,0 +1,9 @@
+# 언어 통계에서 실험 노트북 제외
+#
+# .ipynb 는 출력(표·그래프 JSON)이 파일 크기를 지배해서, 그대로 두면
+# 언어 막대가 Jupyter Notebook 70% 로 잡힌다. 백엔드 프로젝트인데
+# 노트북 프로젝트처럼 보인다.
+#
+# linguist-documentation 은 파일을 "문서"로 분류할 뿐 숨기지 않는다.
+# 노트북은 레포에 그대로 있고 README 링크도 살아 있다.
+*.ipynb linguist-documentation
