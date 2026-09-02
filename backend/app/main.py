@@ -2,19 +2,33 @@
 
 TS 대응: Next.js는 파일 경로가 곧 라우트라 이런 파일이 없었다.
 FastAPI는 라우터를 명시적으로 등록한다 — 어떤 엔드포인트가 있는지 한눈에 보이는 게 장점.
-
-이 파일은 1단계까지 완성된 상태. 라우터를 하나씩 구현할 때마다
-아래 include_router 주석을 풀면 된다.
 """
+
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.adapters import github
+from app.api import auth
 from app.config import get_settings
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """앱 수명 동안 유지되는 자원 정리.
+
+    github 어댑터가 연결 재사용을 위해 httpx.AsyncClient 를 하나 들고 있다.
+    종료할 때 닫지 않으면 "Unclosed client session" 경고가 뜬다.
+    """
+    yield
+    await github.close()
+
 
 app = FastAPI(
     title="md-rag-chatbot backend",
     description="마크다운 노트 기반 RAG 챗봇 엔진",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 
@@ -41,8 +55,7 @@ def health() -> dict:
 #   Next: /api/chat  →  Python: /api/chat
 # ---------------------------------------------------------------
 
-# TODO(2단계): from app.api import auth
-#              app.include_router(auth.router, prefix="/api", tags=["auth"])
+app.include_router(auth.router, prefix="/api", tags=["auth"])
 
 # TODO(6단계): from app.api import chat
 #              app.include_router(chat.router, prefix="/api", tags=["chat"])

@@ -5,32 +5,42 @@ TS 원본: src/lib/pinecone.ts
 ★ 파이썬 특유의 함정: pinecone SDK는 동기(blocking) 라이브러리다.
   FastAPI의 async 핸들러 안에서 그냥 호출하면 그 순간 이벤트 루프 전체가 멈춰서
   다른 요청도 같이 대기한다. 반드시 asyncio.to_thread 로 감싸 별도 스레드로 보낼 것.
-      results = await asyncio.to_thread(index.query, vector=..., top_k=...)
   TS에는 없던 고민 — Node는 SDK가 애초에 전부 비동기였다.
 
-=== 3단계에서 구현 ===
+★ 임계값이 여기 없는 이유 (TS와 달라진 점):
+  TS는 pinecone.ts:79 에서 THRESHOLD 로 걸러서 반환했다. 즉 "얼마나 닮아야
+  관련 있다고 볼 것인가"라는 **판단**이 어댑터에 박혀 있었다.
+  여기서는 어댑터가 점수를 그대로 돌려주고, 자르는 결정은 services/ 가 한다.
+    - services/retrieval.py — 답변을 보류할지 (abstention)
+    - services/ingest.py    — 관련 노트로 링크를 걸지
+  같은 점수라도 두 용도의 기준이 다를 수 있고, 무엇보다 "언제 답을 안 할지"는
+  이 시스템의 핵심 판단이라 검색 배관에 숨어 있으면 안 된다.
 """
 
+import asyncio
+import base64
+import re
+from functools import lru_cache
+
+from pinecone import Pinecone
+
+from app.adapters import gemini
+from app.config import get_settings
 from app.schemas.chat import NoteHit
 
-# ★ 실측 튜닝값(2026-07-14): 관련 0.64+, 무관 0.58- 사이의 골.
-#   Gemini 임베딩은 무관한 문서도 점수가 높게 눌려 나와서 0.5는 너무 낮다.
-#   이 값이 abstention(모르면 보류) 동작을 좌우하는 유일한 손잡이다.
-THRESHOLD = 0.6
-RELATED_THRESHOLD = 0.6
+_NOT_FOUND = re.compile(r"not found|404", re.IGNORECASE)
 
 
+@lru_cache
 def _index():
     """Pinecone 인덱스 핸들 (지연 생성 + 재사용).
 
     TS 대응: pinecone.ts:4-17 — 모듈 전역에 클라이언트를 캐시하는 패턴
-
-    TODO(3단계): 구현
-      힌트 — from pinecone import Pinecone
-             Pinecone(api_key=...).Index(settings.pinecone_index)
-             @lru_cache 를 쓰면 TS의 `let client = null` 패턴을 대체할 수 있다
     """
-    raise NotImplementedError
+    settings = get_settings()
+    if not settings.pinecone_api_key or not settings.pinecone_index:
+        raise RuntimeError("Pinecone not configured (PINECONE_API_KEY / PINECONE_INDEX)")
+    return Pinecone(api_key=settings.pinecone_api_key).Index(settings.pinecone_index)
 
 
 def _to_ascii_id(path: str) -> str:
@@ -42,14 +52,11 @@ def _to_ascii_id(path: str) -> str:
 
     TS 대응: pinecone.ts:20-22  Buffer.from(path).toString("base64url")
 
-    TODO(3단계): 구현
-      힌트 — import base64
-             base64.urlsafe_b64encode(path.encode()).decode()
-             ※ 파이썬은 패딩 "=" 을 남기고 Node의 base64url 은 제거한다.
-               기존 인덱스와 ID를 맞추려면 .rstrip("=") 필요 — 새로 색인할 거면 상관없음.
-               (어느 쪽이든 정하고 나면 바꾸지 말 것. 바꾸면 중복 벡터가 생긴다)
+    ★ rstrip("=") 이 중요하다. Node 의 base64url 은 패딩 "=" 을 제거하는데
+      파이썬 urlsafe_b64encode 는 남긴다. 그대로 두면 TS 가 만든 기존 벡터와
+      ID 가 달라져서, 같은 노트가 두 벌 들어간다(덮어쓰기가 안 된다).
     """
-    raise NotImplementedError
+    return base64.urlsafe_b64encode(path.encode()).decode().rstrip("=")
 
 
 async def upsert_note(*, title: str, path: str, summary: str) -> None:
@@ -62,40 +69,60 @@ async def upsert_note(*, title: str, path: str, summary: str) -> None:
       metadata.path 가 원본으로 가는 포인터 역할을 한다.
 
     TS 대응: pinecone.ts:55-76
-
-    TODO(3단계): 구현
-      1. vector = await gemini.embed(summary, is_query=False)   ← 문서 쪽 task_type
-      2. await asyncio.to_thread(
-             _index().upsert,
-             vectors=[{"id": _to_ascii_id(path), "values": vector,
-                       "metadata": {"title": title, "path": path, "summary": summary}}],
-         )
-      ※ 파이썬 SDK는 upsert(vectors=[...]), TS는 upsert({records:[...]}) — 인자 이름이 다르다
     """
-    raise NotImplementedError
+    vector = await gemini.embed(summary, is_query=False)  # 문서 쪽 task_type
+    await asyncio.to_thread(
+        _index().upsert,
+        vectors=[
+            {
+                "id": _to_ascii_id(path),
+                "values": vector,
+                "metadata": {"title": title, "path": path, "summary": summary},
+            }
+        ],
+    )
+
+
+async def _search(text: str, *, top_k: int, is_query: bool) -> list[NoteHit]:
+    """임베딩 → 유사도 검색 → NoteHit 목록. **점수로 거르지 않는다.**
+
+    query() 와 find_related() 가 공유한다. TS 에서는 이 코드가 두 벌이었고
+    (pinecone.ts:26-41 / 82-102), 임계값만 달랐다.
+    """
+    vector = await gemini.embed(text, is_query=is_query)
+    result = await asyncio.to_thread(
+        _index().query,
+        vector=vector,
+        top_k=top_k,
+        include_metadata=True,
+    )
+    hits = []
+    for match in result.get("matches") or []:
+        # metadata 가 통째로 없을 수 있다 (색인 방식이 바뀐 옛 벡터)
+        meta = match.get("metadata") or {}
+        hits.append(
+            NoteHit(
+                title=meta.get("title", ""),
+                path=meta.get("path", ""),
+                score=match.get("score") or 0.0,
+            )
+        )
+    return hits
 
 
 async def query(question: str, top_k: int = 5) -> list[NoteHit]:
     """질문과 의미가 가까운 노트를 '찾기'만 한다. 본문 로드는 하지 않는다.
 
-    ★ 여기서 THRESHOLD 미만을 잘라내는 게 abstention 의 출발점이다.
-      결과가 0건이면 상위 로직(services/retrieval.py)이 "모르겠다"고 답하게 된다.
-      임계값을 낮추면 없는 얘기를 지어내기 시작하니 함부로 내리지 말 것.
+    점수를 그대로 돌려주므로 **호출한 쪽이 임계값을 정해 잘라야 한다.**
+    (services/retrieval.py 참고)
 
     TS 대응: pinecone.ts:82-102
-
-    TODO(3단계): 구현
-      1. vector = await gemini.embed(question, is_query=True)   ← 질문 쪽 task_type
-      2. results = await asyncio.to_thread(_index().query, vector=vector,
-                                           top_k=top_k, include_metadata=True)
-      3. score >= THRESHOLD 인 것만 NoteHit(title, path, score) 로 변환해 반환
-         metadata 가 없을 수 있으니 (m.metadata or {}).get("title", "") 식으로 방어
     """
-    raise NotImplementedError
+    return await _search(question, top_k=top_k, is_query=True)
 
 
-async def find_related(text: str, top_k: int = 3) -> list[str]:
-    """새 노트와 관련된 기존 노트 '제목' 목록. Obsidian [[링크]] 생성용.
+async def find_related(text: str, top_k: int = 3) -> list[NoteHit]:
+    """새 노트와 관련된 기존 노트 후보. Obsidian [[링크]] 생성용.
 
     ★ 관련 노트를 LLM에게 묻지 않고 벡터 유사도로 찾는 이유:
       LLM은 존재하지 않는 노트 제목을 그럴듯하게 지어낸다.
@@ -105,12 +132,8 @@ async def find_related(text: str, top_k: int = 3) -> list[str]:
       저장 후에 부르면 방금 넣은 노트가 자기 자신과 매칭된다(self-match).
 
     TS 대응: pinecone.ts:26-41
-
-    TODO(3단계): 구현
-      query() 와 거의 같되 RELATED_THRESHOLD 로 거르고 title 문자열만 반환.
-      빈 title 은 제외.
     """
-    raise NotImplementedError
+    return await _search(text, top_k=top_k, is_query=True)
 
 
 async def clear_index() -> None:
@@ -120,9 +143,11 @@ async def clear_index() -> None:
     재색인은 '지우고 다시'가 원칙.
 
     TS 대응: pinecone.ts:44-52
-
-    TODO(7단계): 구현
-      delete_all 호출. 단, 인덱스가 비어 있으면 "namespace not found" / 404 가
-      날 수 있는데 이건 실패가 아니므로 삼켜야 한다 (TS도 동일하게 처리).
     """
-    raise NotImplementedError
+    try:
+        await asyncio.to_thread(_index().delete, delete_all=True)
+    except Exception as exc:
+        # 인덱스가 이미 비어 있으면 "namespace not found" / 404 가 난다.
+        # 이건 실패가 아니라 원하는 상태이므로 삼킨다.
+        if not _NOT_FOUND.search(str(exc)):
+            raise

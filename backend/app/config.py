@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     pinecone_api_key: str = ""
     pinecone_index: str = ""
 
+    # 임베딩 차원. Pinecone 인덱스를 만들 때 정한 값과 **반드시 같아야** 한다.
+    #   실험②(notebooks/02_sweep.ipynb) 결론: 768 이면 AUC 손실 0.001 미만에
+    #   저장량 25%. 다만 현재 인덱스가 3072 로 만들어져 있어 값만 바꾸면
+    #   차원 불일치로 전부 실패한다 → 새 인덱스를 만든 뒤에 768 로 내릴 것.
+    embedding_dimensions: int = 3072
+
     # --- 인증 ---
     auth_password: str = ""
     auth_secret: str = ""
