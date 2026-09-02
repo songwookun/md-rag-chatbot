@@ -62,6 +62,10 @@ open http://localhost:8000/docs     # 자동 생성 API 문서
 | `task_type` 분기 (유지) | `adapters/gemini.py` | 실험② — 요약 기준에서는 현재 조합이 더 높다 |
 
 `src/lib/pinecone.ts:78` 의 `★ 실측 튜닝값` 주석은 **측정한 사람이 없었다.**
+
+> 코드 곳곳의 `TS 원본:` / `TS 대응:` 주석이 가리키는 `src/lib/*.ts` 는
+> 커밋 `8289f4a` 이후 삭제됐다(이관이 끝나 죽은 코드가 됐다).
+> `git show 8289f4a:src/lib/gemini.ts` 로 볼 수 있다.
 파이썬 쪽에는 실제로 잰 값만, 근거 링크와 함께 옮겼다.
 
 ## 엔드포인트
