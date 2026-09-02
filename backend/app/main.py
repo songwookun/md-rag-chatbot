@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.adapters import github
-from app.api import auth
+from app.api import auth, chat, collect, sync
 from app.config import get_settings
 
 
@@ -56,10 +56,6 @@ def health() -> dict:
 # ---------------------------------------------------------------
 
 app.include_router(auth.router, prefix="/api", tags=["auth"])
-
-# TODO(6단계): from app.api import chat
-#              app.include_router(chat.router, prefix="/api", tags=["chat"])
-
-# TODO(7단계): from app.api import sync, collect
-#              app.include_router(sync.router, prefix="/api", tags=["sync"])
-#              app.include_router(collect.router, prefix="/api", tags=["collect"])
+app.include_router(chat.router, prefix="/api", tags=["chat"])
+app.include_router(sync.router, prefix="/api", tags=["sync"])
+app.include_router(collect.router, prefix="/api", tags=["collect"])

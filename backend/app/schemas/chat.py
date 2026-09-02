@@ -60,3 +60,35 @@ class SummaryResult(BaseModel):
     summary: str
     tags: list[str] = []
     category: Literal["articles", "concepts", "projects"]
+
+
+class CollectRequest(BaseModel):
+    """POST /api/collect 요청 본문.
+
+    ★ chat 과 키 이름이 다르다 (message 가 아니라 content).
+      iOS 단축어 같은 외부 도구가 이미 이 형식으로 보내고 있어서 바꾸면 깨진다.
+    """
+
+    content: str = Field(min_length=1, description="저장할 원문")
+
+
+class CollectResponse(BaseModel):
+    """POST /api/collect 응답. chat 과 달리 사람이 읽는 문장이 아니라 구조화된 JSON."""
+
+    success: bool
+    title: str
+    summary: str
+    tags: list[str]
+    category: str
+    saved: bool  # GitHub 저장 여부. TS 와 키 이름을 맞춘다
+    indexed: bool  # 벡터DB 저장 여부. TS 에는 없던 필드(원본이 upsert 를 안 했다)
+
+
+class SyncResponse(BaseModel):
+    """POST /api/sync 응답. 키 이름은 TS(sync/route.ts:51-57)와 동일하게 유지."""
+
+    message: str
+    synced: int
+    failed: int
+    skipped: int
+    total: int

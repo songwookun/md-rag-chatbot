@@ -26,11 +26,11 @@ open http://localhost:8000/docs     # 자동 생성 API 문서
 - [x] 1단계 — `/health` + 환경변수 로딩
 - [x] 2단계 — `core/security.py` (HMAC 토큰) + `api/auth.py` + `api/deps.py`
 - [x] 3단계 — `adapters/` 3개 + `core/markdown.py` + `core/errors.py`
-- [ ] 4단계 — `services/intent.py`, `services/ingest.py`   ← **직접 구현**
-- [ ] 5단계 — `services/retrieval.py`                      ← **직접 구현**
-- [ ] 6단계 — `api/chat.py` 통합
-- [ ] 7단계 — `sync` / `collect`
-- [ ] 8단계 — 프론트 프록시 전환
+- [x] 4단계 — `services/intent.py`, `services/ingest.py`
+- [x] 5단계 — `services/retrieval.py`
+- [x] 6단계 — `api/chat.py` 통합
+- [x] 7단계 — `api/sync.py` / `api/collect.py`
+- [ ] 8단계 — 프론트 프록시 전환   ← **다음**
 
 ### 작업 분담
 
@@ -64,8 +64,30 @@ open http://localhost:8000/docs     # 자동 생성 API 문서
 `src/lib/pinecone.ts:78` 의 `★ 실측 튜닝값` 주석은 **측정한 사람이 없었다.**
 파이썬 쪽에는 실제로 잰 값만, 근거 링크와 함께 옮겼다.
 
+## 엔드포인트
+
+| | 인증 | 용도 |
+|---|---|---|
+| `POST /api/auth` · `GET /api/auth/check` | — | 로그인 / 상태 확인 |
+| `POST /api/chat` | 쿠키 | 저장 또는 질문 (프론트가 쓰는 유일한 경로) |
+| `POST /api/sync` | 쿠키 | 전체 재색인 |
+| `POST /api/collect` | `Authorization: Bearer` | 외부 도구(iOS 단축어) 수집 |
+
+`http://localhost:8000/docs` 에서 전부 확인 가능.
+
 ## 아직 확인 못 한 것
 
-`/health` 와 인증 엔드포인트는 실제로 띄워서 확인했다.
-`adapters/gemini.py` `adapters/pinecone.py` 는 **실제 API 를 호출해본 적이 없다** —
-6단계에서 `api/chat.py` 가 붙어야 처음 불린다. SDK 응답 모양이 다르면 그때 드러난다.
+띄워서 확인한 것: `/health`, 인증, 라우팅, 401/422 처리.
+
+**실제 외부 API 를 호출해본 적이 없다.** Gemini·Pinecone SDK 응답 모양이 다르면
+`api/chat.py` 를 실제로 불렀을 때 드러난다. 테스트 61개는 전부 어댑터를 가짜로
+갈아끼운 것이라 SDK 계약은 검증하지 못한다.
+
+확인 방법 (읽기만 하므로 안전 — Pinecone 에 쓰지 않는다):
+
+```bash
+uvicorn app.main:app --reload --port 8000
+# 로그인해서 쿠키를 받은 뒤
+curl -b cookie.txt localhost:8000/api/chat \
+  -H 'Content-Type: application/json' -d '{"message":"메타하네스가 뭐야?"}'
+```

@@ -60,6 +60,31 @@ _RULES: dict[str, list[tuple[tuple[str, ...], str]]] = {
 }
 
 
+def detect_service(exc: Exception) -> Service:
+    """예외가 어느 서비스에서 났는지 추정한다.
+
+    ★ 왜 필요한가 — services/retrieval.py 는 한 함수 안에서 Pinecone·GitHub·Gemini
+      셋을 모두 부른다. api 층은 어느 쪽이 터졌는지 모른 채 예외만 받는다.
+
+    ★ 추정 방법과 한계
+      GitHub  어댑터가 "GitHub API error {status}: ..." 형태로 직접 던진다 (문자열 확실)
+      나머지  SDK 예외이므로 예외 클래스가 정의된 모듈 이름으로 가른다
+      셋 다 아니면 Gemini 로 둔다 — 그 경우 user_message 가 원문을 그대로 보여준다.
+
+      휴리스틱이라 틀릴 수 있다. 틀려도 손해는 "안내 문구가 덜 정확하다" 정도다.
+      정확히 하려면 어댑터마다 전용 예외 클래스를 만들어 감싸야 하는데,
+      지금은 그 비용이 이득보다 크다.
+    """
+    if "GitHub API error" in str(exc):
+        return "GitHub"
+    module = type(exc).__module__ or ""
+    if module.startswith("pinecone"):
+        return "Pinecone"
+    if module.startswith("google"):
+        return "Gemini"
+    return "Gemini"
+
+
 def user_message(exc: Exception, service: Service) -> str:
     """예외를 사용자용 안내 문구로 변환. 매칭 실패 시 원문을 그대로 노출한다.
 
