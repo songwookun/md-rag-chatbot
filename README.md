@@ -14,17 +14,9 @@
 
 **[한국어](#한국어) · [English](#english)**
 
-
-https://github.com/user-attachments/assets/a22019a1-8686-4f04-8c58-034bc78ff6f3
-
-
 ---
 
-<!-- ▼▼▼ 데모 영상 자리 — 이 아래 빈 줄에 md-rag-demo-final.mp4 를 드래그&드롭 ▼▼▼ -->
-<!-- 업로드되면 https://github.com/user-attachments/assets/... 링크가 자동 삽입된다. -->
-<!-- 링크가 들어오면 이 주석 3줄은 지울 것. -->
-
-
+https://github.com/user-attachments/assets/a22019a1-8686-4f04-8c58-034bc78ff6f3
 
 ---
 
