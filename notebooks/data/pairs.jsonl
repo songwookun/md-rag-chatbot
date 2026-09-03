@@ -17,6 +17,31 @@
 {"question": "내가 만든 RAG 챗봇은 저장할 내용인지 질문인지 어떻게 구분해?", "relevant_paths": ["projects/2026-04-13-AXswgBrain-개인-지식-RAG-챗봇-기술-설명서.md"], "kind": "본문세부", "note": "'의도 분류'가 이 노트에만 등장. 47813자로 볼트에서 가장 긴 노트 — 긴 문서를 통째로 임베딩할 때 정보가 희석되는지 보는 케이스"}
 {"question": "Obsidian 위키링크랑 백링크가 뭐가 달라?", "relevant_paths": ["concepts/2026-04-13-Obsidian-완전-정리.md"], "kind": "제목직격", "note": "'백링크'가 이 노트에만 등장"}
 {"question": "n8n이나 Make 같은 워크플로우 자동화 도구는 어디에 붙이는 거야?", "relevant_paths": ["concepts/2026-04-05-AX-엔지니어-실무-기술-스택.md"], "kind": "본문세부", "note": "공고 키워드: 업무 자동화. 'n8n'이 이 노트에만 등장"}
-{"question": "LLM-as-a-judge로 평가 파이프라인 설계하려면? 골든 데이터셋은 어떻게 만들어?", "relevant_paths": [], "kind": "정답없음", "note": "★ abstention 검증용. 2026 공고에서 가장 많이 요구되는 역량(eval)인데 볼트에 없음. 'LLM-as-a-judge', '평가 파이프라인', '골든' 전부 0건 확인. → 챗봇이 '없다'고 답해야 정상"}
-{"question": "vLLM으로 서빙하면서 LoRA 파인튜닝하려면 PyTorch 설정을 어떻게 잡아?", "relevant_paths": [], "kind": "정답없음", "note": "★ abstention 검증용. vLLM/LoRA/PyTorch 전부 0건. 단 '파인튜닝'이라는 단어는 백엔드 스택 노트에 스쳐 지나가듯 있음 → 중간 점수가 나올 수 있고, 그게 바로 임계값이 걸러줘야 할 케이스"}
-{"question": "BM25랑 하이브리드 검색 붙이고 리랭커까지 태우려면 어떻게 해?", "relevant_paths": [], "kind": "정답없음", "note": "★ abstention 검증용. BM25/하이브리드 검색/Reranker 전부 0건. 공고에는 나오는 검색 고도화 주제. RAG 관련 노트들과 주제는 가까워서 점수가 애매하게 나올 가능성이 높은, 가장 어려운 abstention 케이스"}
+{"question": "LLM-as-a-judge로 평가 파이프라인 설계하려면? 골든 데이터셋은 어떻게 만들어?", "relevant_paths": [], "kind": "정답없음", "note": "★ abstention 검증용. 2026 공고에서 가장 많이 요구되는 역량(eval)인데 볼트에 없음. 'LLM-as-a-judge', '평가 파이프라인', '골든' 전부 0건 확인. → 챗봇이 '없다'고 답해야 정상", "layer": "L3a"}
+{"question": "vLLM으로 서빙하면서 LoRA 파인튜닝하려면 PyTorch 설정을 어떻게 잡아?", "relevant_paths": [], "kind": "정답없음", "note": "★ abstention 검증용. vLLM/LoRA/PyTorch 전부 0건. 단 '파인튜닝'이라는 단어는 백엔드 스택 노트에 스쳐 지나가듯 있음 → 중간 점수가 나올 수 있고, 그게 바로 임계값이 걸러줘야 할 케이스", "layer": "L3b"}
+{"question": "BM25랑 하이브리드 검색 붙이고 리랭커까지 태우려면 어떻게 해?", "relevant_paths": [], "kind": "정답없음", "note": "★ abstention 검증용. BM25/하이브리드 검색/Reranker 전부 0건. 공고에는 나오는 검색 고도화 주제. RAG 관련 노트들과 주제는 가까워서 점수가 애매하게 나올 가능성이 높은, 가장 어려운 abstention 케이스", "layer": "L3b"}
+{"question": "김치찌개에 돼지고기 대신 참치 넣어도 괜찮아?", "relevant_paths": [], "kind": "정답없음", "layer": "L1", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "사워도우 발효종은 며칠마다 먹여야 해?", "relevant_paths": [], "kind": "정답없음", "layer": "L1", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "원두는 냉동실 보관이 나아 실온이 나아?", "relevant_paths": [], "kind": "정답없음", "layer": "L1", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "파스타 삶을 때 소금은 언제 넣는 게 맞아?", "relevant_paths": [], "kind": "정답없음", "layer": "L1", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "에어프라이어로 삼겹살 구우면 몇 도에 몇 분?", "relevant_paths": [], "kind": "정답없음", "layer": "L1", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "Terraform으로 VPC랑 서브넷 구성하는 순서가 어떻게 돼?", "relevant_paths": [], "kind": "정답없음", "layer": "L2", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "Airflow DAG에서 태스크 재시도랑 백필은 어떻게 설정해?", "relevant_paths": [], "kind": "정답없음", "layer": "L2", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "Elasticsearch 인덱스 샤드 개수는 어떻게 정해?", "relevant_paths": [], "kind": "정답없음", "layer": "L2", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "Prometheus랑 Grafana로 알람 룰은 어떻게 짜?", "relevant_paths": [], "kind": "정답없음", "layer": "L2", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "SwiftUI에서 화면 간 상태 공유는 어떻게 해?", "relevant_paths": [], "kind": "정답없음", "layer": "L2", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "Flutter 상태관리 Riverpod이랑 Bloc 중에 뭐가 나아?", "relevant_paths": [], "kind": "정답없음", "layer": "L2", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "Rust의 borrow checker는 컴파일 타임에 뭘 검사해?", "relevant_paths": [], "kind": "정답없음", "layer": "L2", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "Nest.js에서 모듈 순환 의존성은 어떻게 풀어?", "relevant_paths": [], "kind": "정답없음", "layer": "L2", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "트랜스포머의 어텐션은 정확히 뭘 계산하는 거야?", "relevant_paths": [], "kind": "정답없음", "layer": "L3a", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "쿠버네티스 HPA로 오토스케일링 기준을 뭘로 잡아?", "relevant_paths": [], "kind": "정답없음", "layer": "L3a", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "Kafka 파티션을 몇 개로 나눠야 컨슈머가 안 밀려?", "relevant_paths": [], "kind": "정답없음", "layer": "L3a", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "GraphQL에서 N+1 쿼리는 어떻게 푸는 거야?", "relevant_paths": [], "kind": "정답없음", "layer": "L3a", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "Docker 멀티스테이지 빌드로 이미지 용량 줄이는 법 알려줘", "relevant_paths": [], "kind": "정답없음", "layer": "L3a", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "Redis 클러스터에서 키는 어떻게 분산되는 거야?", "relevant_paths": [], "kind": "정답없음", "layer": "L3a", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "Nginx 리버스 프록시 타임아웃은 어디서 조정해?", "relevant_paths": [], "kind": "정답없음", "layer": "L3a", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "벡터 인덱스 HNSW랑 IVF는 뭐가 달라?", "relevant_paths": [], "kind": "정답없음", "layer": "L3b", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "RAG에서 청킹 크기랑 겹침은 얼마로 잡아?", "relevant_paths": [], "kind": "정답없음", "layer": "L3b", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "LLM 토큰 비용 계산해서 월 예산 잡는 법", "relevant_paths": [], "kind": "정답없음", "layer": "L3b", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "프롬프트 인젝션 방어를 코드로 어떻게 구현해?", "relevant_paths": [], "kind": "정답없음", "layer": "L3b", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
+{"question": "Pinecone 네임스페이스로 멀티테넌시 구성하는 법", "relevant_paths": [], "kind": "정답없음", "layer": "L3b", "note": "Phase1 확장 — 층 배정은 볼트 내 용어 등장 횟수로 판정"}
