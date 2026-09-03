@@ -5,6 +5,7 @@
 """
 
 import hashlib
+import math
 import time
 import pickle
 import re
@@ -348,4 +349,179 @@ def aggregate(sim_units: np.ndarray, owner: np.ndarray, n_notes: int, how: str =
     for ni in range(n_notes):
         cols = sim_units[:, owner == ni]
         out[:, ni] = cols.max(axis=1) if how == "max" else cols.mean(axis=1)
+    return out
+
+# ---------------------------------------------------------------
+# 4. 어휘 검색 (BM25)
+#    임베딩이 못 보는 신호를 본다 — "이 용어가 문서에 아예 없다".
+#    라이브러리를 쓰지 않고 직접 짠 이유: 한국어 토큰화를 통제해야 하고,
+#    30줄이라 블랙박스로 둘 이유가 없다.
+# ---------------------------------------------------------------
+
+_TOKEN = re.compile(r"[A-Za-z0-9]+|[가-힣]+")
+
+
+def tok_word(text: str) -> list[str]:
+    """공백·구두점 분리. 영문/숫자와 한글 덩어리를 따로 뽑는다.
+
+    ★ 한계: 한국어는 조사가 붙는다. "검색을"과 "검색은"이 다른 토큰이 된다.
+      영문 용어(BM25, vLLM, LoRA)에는 문제가 없지만 한글 질의에서 매칭을 놓친다.
+    """
+    return [t.lower() for t in _TOKEN.findall(text)]
+
+
+def tok_ngram(text: str, n: int = 2) -> list[str]:
+    """문자 n-gram. 형태소 분석기 없이 조사 문제를 우회한다.
+
+    "검색을" → 검색, 색을 …  "검색은" → 검색, 색은 …  → '검색' 이 공유된다.
+    대신 토큰 수가 폭증하고 의미 없는 조각도 섞인다.
+    """
+    out = []
+    for t in tok_word(text):
+        if len(t) <= n:
+            out.append(t)
+        else:
+            out.extend(t[i:i + n] for i in range(len(t) - n + 1))
+    return out
+
+
+def bm25_matrix(queries: list[str], docs: list[str], tokenizer=tok_word,
+                k1: float = 1.5, b: float = 0.75) -> np.ndarray:
+    """질문 × 문서 BM25 점수 행렬.
+
+    k1  빈도 포화 — 같은 단어가 10번 나와도 1번의 10배가 되지 않게 누른다
+    b   길이 정규화 — 긴 문서가 단어를 많이 담는다는 이유만으로 유리하지 않게
+
+    ★ 임베딩과의 결정적 차이: 질의어가 문서에 **하나도 없으면 0점**이다.
+      임베딩은 주제만 비슷해도 0.67 을 준다. 이 0 이 abstention 의 신호가 된다.
+    """
+    doc_toks = [tokenizer(d) for d in docs]
+    N = len(doc_toks)
+    avgdl = sum(len(d) for d in doc_toks) / max(N, 1)
+
+    df: dict[str, int] = {}
+    tfs = []
+    for toks in doc_toks:
+        tf: dict[str, int] = {}
+        for t in toks:
+            tf[t] = tf.get(t, 0) + 1
+        tfs.append(tf)
+        for t in tf:
+            df[t] = df.get(t, 0) + 1
+
+    idf = {t: math.log((N - n + 0.5) / (n + 0.5) + 1.0) for t, n in df.items()}
+
+    out = np.zeros((len(queries), N), dtype=float)
+    for qi, q in enumerate(queries):
+        q_toks = tokenizer(q)
+        for di, tf in enumerate(tfs):
+            dl = len(doc_toks[di])
+            s = 0.0
+            for t in q_toks:
+                f = tf.get(t)
+                if not f:
+                    continue
+                s += idf[t] * (f * (k1 + 1)) / (f + k1 * (1 - b + b * dl / avgdl))
+            out[qi, di] = s
+    return out
+
+
+def minmax(a: np.ndarray) -> np.ndarray:
+    """행별 0~1 정규화. 스케일이 다른 점수를 합칠 때 쓴다."""
+    lo = a.min(axis=1, keepdims=True)
+    hi = a.max(axis=1, keepdims=True)
+    return np.divide(a - lo, np.maximum(hi - lo, 1e-12))
+
+
+def rrf(*score_mats: np.ndarray, k: int = 60) -> np.ndarray:
+    """Reciprocal Rank Fusion — 점수 대신 **순위**로 합친다.
+
+    ★ 스케일이 완전히 다른 점수(코사인 0~1 vs BM25 0~20)를 섞을 때
+      정규화는 분포에 휘둘린다. 순위는 그런 문제가 없다.
+    """
+    total = np.zeros_like(score_mats[0], dtype=float)
+    for m in score_mats:
+        order = np.argsort(-m, axis=1)
+        rank = np.empty_like(order)
+        for i in range(m.shape[0]):
+            rank[i, order[i]] = np.arange(m.shape[1])
+        total += 1.0 / (k + rank + 1)
+    return total
+
+
+# ---------------------------------------------------------------
+# 5. 희귀 토큰 신호
+#    BM25 는 흔한 조각(llm, 설계)에서도 점수를 만든다.
+#    여기서는 **볼트에 희귀한 토큰만** 남기고 두 가지를 본다.
+#
+#      질문 수준  질문의 내용어 중 볼트 어디에도 없는 비율 (OOV)
+#                 → 문서와 무관하게 "이 주제를 볼트가 다루지 않는다"
+#      문서 수준  질문의 희귀 토큰이 이 문서에 얼마나 있는가 (커버리지)
+# ---------------------------------------------------------------
+
+# 한글 조사·기능어. 길이 1 한글은 대부분 조사라 통째로 뺀다.
+_STOP = {"은","는","이","가","을","를","의","에","로","와","과","도","만","고","랑",
+         "어떻게","어떤","무엇","뭐","뭔가","좀","것","거","때","수","등","및",
+         "for","the","a","an","of","to","in","on","is","are","with","and","or"}
+
+
+def content_tokens(text: str, tokenizer=None) -> list[str]:
+    """조사·기능어를 뺀 내용어만."""
+    tokenizer = tokenizer or tok_word
+    out = []
+    for t in tokenizer(text):
+        if t in _STOP:
+            continue
+        if len(t) < 2:          # 한 글자는 조사이거나 변별력이 없다
+            continue
+        out.append(t)
+    return out
+
+
+def token_df(docs: list[str], tokenizer=None) -> dict[str, int]:
+    """토큰별 문서빈도(df). 볼트 전체에서 몇 개 문서에 나오는가."""
+    df: dict[str, int] = {}
+    for d in docs:
+        for t in set(content_tokens(d, tokenizer)):
+            df[t] = df.get(t, 0) + 1
+    return df
+
+
+def oov_ratio(queries: list[str], docs: list[str], tokenizer=None) -> np.ndarray:
+    """질문의 내용어 중 **볼트 어디에도 없는** 토큰의 비율. 질문당 값 하나.
+
+    ★ 높을수록 "볼트가 다루지 않는 주제"라는 신호다.
+      문서별 유사도와 달리 **문서와 무관**하다 — 애초에 볼트에 없는 얘기니까.
+    """
+    df = token_df(docs, tokenizer)
+    out = np.zeros(len(queries))
+    for qi, q in enumerate(queries):
+        toks = content_tokens(q, tokenizer)
+        if not toks:
+            continue
+        out[qi] = sum(1 for t in toks if t not in df) / len(toks)
+    return out
+
+
+def rare_coverage(queries: list[str], docs: list[str], tokenizer=None,
+                  df_max: int | None = None) -> np.ndarray:
+    """질문의 **희귀 토큰**이 각 문서에 얼마나 들어 있는가. (질문 × 문서)
+
+    df_max  이 값보다 흔한 토큰은 신호에서 뺀다.
+            기본은 전체 문서의 30% — llm, 설계 처럼 어디에나 있는 말을 거른다.
+    """
+    df = token_df(docs, tokenizer)
+    N = len(docs)
+    if df_max is None:
+        df_max = max(1, int(N * 0.3))
+
+    doc_sets = [set(content_tokens(d, tokenizer)) for d in docs]
+    out = np.zeros((len(queries), N))
+    for qi, q in enumerate(queries):
+        # 볼트에 있으면서 희귀한 토큰만 신호로 쓴다 (df=0 은 어느 문서에도 없으니 제외)
+        rare = [t for t in set(content_tokens(q, tokenizer)) if 0 < df.get(t, 0) <= df_max]
+        if not rare:
+            continue
+        for di, dset in enumerate(doc_sets):
+            out[qi, di] = sum(1 for t in rare if t in dset) / len(rare)
     return out
