@@ -211,6 +211,39 @@ def abstention_margin(sim: np.ndarray, relevant_idx: list[list[int]], kinds: lis
     return lo - hi, hi, lo
 
 
+def abstention_auc(sim: np.ndarray, relevant_idx: list[list[int]], strict: bool = False) -> float:
+    """'답할 수 있는 질문'과 '답이 없는 질문'을 점수로 가를 수 있는가.
+
+    ★ 보류여유(최소 − 최대)는 극단값 두 개가 부호를 결정한다. 표본이 작을수록 못 믿고,
+      무엇보다 **부호밖에 안 알려준다.**
+      이 지표는 두 분포 전체를 비교하므로 안정적이고 '얼마나 가까운지'를 알려준다.
+
+          보류여유 > 0   ⟺   이 AUC == 1.0
+
+      즉 보류여유는 "AUC가 1인가 아닌가"만 말하는 이진 지표다.
+      실험②의 "90여 설정 전부 음수"는 사실 "전부 AUC < 1"이라는 뜻이고,
+      0.6과 0.98은 완전히 다른 상황인데 그 구분이 없었다.
+
+    ※ 실험①에서 분리도(평균 차이)로 판정했다가 뒤집힌 것과 같은 함정이다.
+      그때는 평균이라 겹침을 못 봤고, 보류여유는 극단값 하나에 좌우된다.
+
+    strict=False  답 있는 질문의 **전체 최고점**    — "답할지 말지"를 가르나
+    strict=True   답 있는 질문의 **정답 노트 최고점** — "정답으로 답할 수 있나"를 가르나
+    """
+    pos, neg = [], []
+    for qi, rel in enumerate(relevant_idx):
+        if not rel:
+            # 답이 없는데 가장 높게 걸린 점수
+            neg.append(float(sim[qi].max()))         
+        elif strict:
+            pos.append(float(max(sim[qi][d] for d in rel)))
+        else:
+            pos.append(float(sim[qi].max()))
+    if not pos or not neg:
+        return float("nan")
+    return auc(np.array(pos), np.array(neg))
+
+
 def evaluate(sim, relevant_idx, kinds) -> dict:
     """한 설정의 모든 지표를 한 번에."""
     pos, neg = [], []
@@ -230,6 +263,8 @@ def evaluate(sim, relevant_idx, kinds) -> dict:
         "최적임계값": thr,
         "F1": f1,
         "보류여유": margin,
+        "보류AUC": abstention_auc(sim, relevant_idx, strict=False),
+        "보류AUC엄격": abstention_auc(sim, relevant_idx, strict=True),
         "정답없음최고": no_ans_hi,
         "관련최저": rel_lo,
     }
