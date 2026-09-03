@@ -1,3 +1,10 @@
+# 빌드 백엔드를 명시한다.
+#   이 섹션이 없으면 pip 가 레거시 경로로 떨어져서, 환경에 따라
+#   `pip install -e .` 가 거부된다(PEP 660 편집 설치를 못 함).
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "md-rag-backend"
 version = "0.1.0"
@@ -38,6 +45,9 @@ lab = [
 # 기동:
 #   uvicorn app.main:app --reload --port 8000
 # ---------------------------------------------------------------
+
+[tool.setuptools.packages.find]
+include = ["app*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

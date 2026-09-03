@@ -53,7 +53,7 @@ async def embed(text: str, *, is_query: bool = False) -> list[float]:
       ※ 실험①은 "분기가 오히려 손해"라고 결론냈지만, 실험②에서 뒤집혔다.
         실제 코드가 임베딩하는 **요약** 기준으로는 현재 조합(DOCUMENT/QUERY)이
         더 높다(AUC 0.982 vs 0.972). 그래서 유지한다.
-        근거: docs/notion/02_sweep_study.md 결정 3
+        근거: docs/experiments/02-sweep.md 결정 4
 
     TS 대응: gemini.ts:10-24
     """

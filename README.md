@@ -4,7 +4,7 @@
 > **AI가 "실측 튜닝값"이라 써놓은 숫자를 직접 재보니 전부 틀렸다** — 그래서 백엔드를 다시 짰다.
 
 <p>
-<img alt="Python" src="https://img.shields.io/badge/Python_3.13-3776AB?logo=python&logoColor=white">
+<img alt="Python" src="https://img.shields.io/badge/Python_3.11+-3776AB?logo=python&logoColor=white">
 <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white">
 <img alt="Next.js" src="https://img.shields.io/badge/Next.js_15-000000?logo=nextdotjs&logoColor=white">
 <img alt="Gemini" src="https://img.shields.io/badge/Gemini-8E75B2?logo=googlegemini&logoColor=white">
@@ -116,6 +116,7 @@ const THRESHOLD = 0.6;
 ## 측정한 것 — 코드의 숫자에는 근거가 있다
 
 노트 20개 / 질문 22개(정답이 있는 질문 19개)로 **설정 90여 개, 임베딩 1,400여 건**을 비교했습니다.
+전체 기록은 [`docs/experiments/`](docs/experiments/) 와 [`notebooks/`](notebooks/) 에 있습니다.
 
 | 항목 | 원본 | 반영 | 근거 |
 |---|---|---|---|
@@ -169,9 +170,11 @@ backend/                 Python (FastAPI) — 백엔드 전부
     core/                공용 — HMAC 토큰 · 마크다운 조립 · 에러 문구 표
   tests/                 61개. 외부 호출 없이 전부 실행
 
+docs/experiments/        실험 기록 — 코드의 상수들이 근거로 참조하는 문서
 notebooks/               실험실 — 코드에 박힌 상수를 직접 측정
   01_task_type.ipynb       실험① task_type 분기 (결론이 뒤집힌 기록 포함)
   02_sweep.ipynb           실험② 설정 90여 개 스윕
+posts/                   블로그 글 원본 (발행은 velog)
 
 src/                     Next.js — 프론트 + 얇은 프록시 (로직 0줄)
 ```
@@ -335,6 +338,8 @@ The point of this repo isn't "I built a RAG app." It's **"do I know why the numb
 | Embedding dimensions | 3072 | **768 recommended**<br>(default still 3072) | AUC loss < 0.001, **75% less storage** (`gemini-embedding-001` is Matryoshka). Lowering it requires recreating the index, so the default stays 3072 |
 | `task_type` split | on | **kept** | On summaries the current pair scores higher (AUC 0.982 vs 0.972) |
 | Chunking | none | **kept** | +0.009 AUC costs 7.5× vectors, 3.75× storage |
+
+Full records: [`docs/experiments/`](docs/experiments/) and [`notebooks/`](notebooks/).
 
 **Measuring 90+ configurations and concluding "change two numbers" is itself the result** — the point was to avoid changing anything without evidence.
 

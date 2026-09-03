@@ -43,7 +43,10 @@ next-env.d.ts
 architecture.html
 
 # 작업 노트 — 공개 대상 아님 (블로그 원재료)
-/docs/
+#   디렉터리째 제외하면 하위 예외(!)가 안 먹으므로 /docs/* 로 쓴다
+/docs/*
+# 단, 실험 기록은 공개한다 — 코드의 상수들이 근거로 참조하는 문서다
+!/docs/experiments/
 
 # Claude 메모리 / 로컬 설정 — 공개 대상 아님
 .claude/
