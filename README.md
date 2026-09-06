@@ -424,7 +424,7 @@ Full records: [`docs/experiments/`](docs/experiments/) and [`notebooks/`](notebo
 
 **I overturned my own conclusion.** My first experiment judged retrieval by *mean separation* alone and called it poor. Re-measured with AUC: **0.982, Recall@3 = 1.00**. Retrieval was fine all along; the metric was wrong. Means don't capture distribution overlap. The failed notebook is kept, not deleted.
 
-## What's still unsolved
+## The problem thresholds couldn't solve — and how I solved it
 
 Every one of the 90+ configurations produced a **negative** value for:
 
