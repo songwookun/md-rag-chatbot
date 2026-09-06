@@ -51,8 +51,12 @@ architecture.html
 # Claude 메모리 / 로컬 설정 — 공개 대상 아님
 .claude/
 
-# 임베딩 캐시 (용량 큼, 재생성 가능)
+# 임베딩 캐시 — 21MB 라 제외. API 호출로 재생성 가능하다.
 notebooks/data/embed_cache.pkl
+#
+# ★ judge_cache / rerank_cache 는 **커밋한다.** 크기가 작고(20KB 안팎),
+#   판정 캐시는 Gemini 235회(약 $0.15 · 12분)를 들여 만든 것이라
+#   잃으면 다시 돈을 써야 한다. 리랭커 캐시도 CPU 4분치다.
 
 # 파이썬 캐시
 __pycache__/

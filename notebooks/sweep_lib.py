@@ -219,9 +219,16 @@ def abstention_auc(sim: np.ndarray, relevant_idx: list[list[int]], strict: bool 
       무엇보다 **부호밖에 안 알려준다.**
       이 지표는 두 분포 전체를 비교하므로 안정적이고 '얼마나 가까운지'를 알려준다.
 
-          보류여유 > 0   ⟺   이 AUC == 1.0
+          보류여유 > 0   ⟹   이 AUC == 1.0   (역은 성립하지 않는다)
 
-      즉 보류여유는 "AUC가 1인가 아닌가"만 말하는 이진 지표다.
+      ★ 2026-09-06 정정 — 처음에 ⟺ 라고 썼는데 틀렸다.
+        두 함수가 답있음 쪽에서 **다른 통계량**을 쓴다.
+          abstention_margin  정답 노트 중 **최저점** — 정답이 전부 넘어야 한다
+          abstention_auc     정답 노트 중 **최고점** — 정답 하나만 넘으면 된다
+        복수정답 질문에서 두 번째 정답이 낮으면 AUC=1.0 인데도 여유가 음수가 된다.
+        실제로 리랭커에서 그랬다(AUC 1.0000 / 여유 −0.1726).
+
+      실용적으로는 AUC 쪽이 맞다 — 답하려면 정답 노트 하나만 찾으면 되기 때문이다.
       실험②의 "90여 설정 전부 음수"는 사실 "전부 AUC < 1"이라는 뜻이고,
       0.6과 0.98은 완전히 다른 상황인데 그 구분이 없었다.
 
@@ -525,3 +532,136 @@ def rare_coverage(queries: list[str], docs: list[str], tokenizer=None,
         for di, dset in enumerate(doc_sets):
             out[qi, di] = sum(1 for t in rare if t in dset) / len(rare)
     return out
+
+
+# ---------------------------------------------------------------
+# 6. LLM 판정
+#    유일하게 "주제가 비슷한가"가 아니라 "답이 적혀 있는가"를 묻는 수단.
+#    비싸고 느리고 흔들린다 — 그래서 상위 k개에만 건다.
+# ---------------------------------------------------------------
+
+JUDGE_CACHE_PATH = Path("data/judge_cache.pkl")
+_judge_cache: dict = {}
+
+
+def load_judge_cache() -> int:
+    global _judge_cache
+    if JUDGE_CACHE_PATH.exists():
+        _judge_cache = pickle.loads(JUDGE_CACHE_PATH.read_bytes())
+    return len(_judge_cache)
+
+
+def save_judge_cache() -> int:
+    JUDGE_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    JUDGE_CACHE_PATH.write_bytes(pickle.dumps(_judge_cache))
+    return len(_judge_cache)
+
+
+_JUDGE_PROMPT = """아래 [노트]에 [질문]의 답이 실제로 적혀 있는지만 판단하세요.
+
+[노트]
+{doc}
+
+[질문]
+{q}
+
+[규칙]
+- 주제가 비슷한지가 아니라, **답할 내용이 실제로 적혀 있는지**를 봅니다.
+- 노트가 그 주제를 언급만 하고 질문에 답하지 않으면 0 입니다.
+- 당신이 학습으로 아는 지식은 쓰지 마세요. 노트에 적힌 것만 봅니다.
+
+0(전혀 없음) ~ 10(충분히 답할 수 있음) 중 **숫자 하나만** 출력하세요."""
+
+
+def judge_pairs(client, model, pairs_qd: list[tuple[str, str]], log=None) -> list[float]:
+    """(질문, 노트본문) 쌍마다 0~10 점수. 캐시로 재실행 시 호출 0회.
+
+    ★ 노트 본문을 통째로 넣는다. 요약으로 판정하면 "요약에 없을 뿐" 인 것을
+      "답이 없다" 로 잘못 판정한다 — small-to-big 의 답변 단계와 같은 이유다.
+    """
+    out = []
+    dirty = 0
+    for i, (q, doc) in enumerate(pairs_qd):
+        key = (hashlib.sha256(f"{q}\x00{doc}".encode()).hexdigest(), model, "judge-v1")
+        if key not in _judge_cache:
+            r = client.models.generate_content(
+                model=model, contents=_JUDGE_PROMPT.format(doc=doc[:12000], q=q))
+            m = re.search(r"\d+(?:\.\d+)?", (r.text or ""))
+            _judge_cache[key] = float(m.group()) if m else 0.0
+            time.sleep(0.15)   # 레이트리밋 여유
+            dirty += 1
+            # ★ 20건마다 저장한다. 루프 끝에서만 저장하면 중간에 죽었을 때
+            #   이미 지불한 호출이 통째로 날아간다. 실제로 한 번 겪었다.
+            if dirty % 20 == 0:
+                save_judge_cache()
+                if log:
+                    log(f"  판정 {i+1}/{len(pairs_qd)} · 캐시 저장")
+        out.append(_judge_cache[key])
+    if dirty:
+        save_judge_cache()
+    return out
+
+
+# ---------------------------------------------------------------
+# 7. 크로스인코더 리랭커
+#    임베딩(바이인코더)은 질문과 문서를 **따로** 인코딩한다.
+#    크로스인코더는 둘을 **같이** 넣어 상호작용을 본다 — 그래서 정밀하고 느리다.
+#    사전 색인이 불가능해 상위 k개 재순위화에만 쓴다.
+#
+#    ★ LLM 판정과 달리 API 호출이 0회다. 로컬 모델 추론뿐이라
+#      매 요청 비용이 붙지 않는다. 채택 결정에서 이게 큰 변수가 된다.
+# ---------------------------------------------------------------
+
+RERANK_CACHE_PATH = Path("data/rerank_cache.pkl")
+_rerank_cache: dict = {}
+_reranker = None
+
+
+def load_rerank_cache() -> int:
+    global _rerank_cache
+    if RERANK_CACHE_PATH.exists():
+        _rerank_cache = pickle.loads(RERANK_CACHE_PATH.read_bytes())
+    return len(_rerank_cache)
+
+
+def save_rerank_cache() -> int:
+    RERANK_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    RERANK_CACHE_PATH.write_bytes(pickle.dumps(_rerank_cache))
+    return len(_rerank_cache)
+
+
+def get_reranker(model_name: str = "BAAI/bge-reranker-v2-m3"):
+    """크로스인코더 로드 (한 번만). 다국어 모델이라 한국어가 된다."""
+    global _reranker
+    if _reranker is None:
+        from sentence_transformers import CrossEncoder
+        import torch
+        dev = "mps" if torch.backends.mps.is_available() else "cpu"
+        _reranker = CrossEncoder(model_name, device=dev, max_length=512)
+        print(f"  리랭커 로드: {model_name} on {dev}")
+    return _reranker
+
+
+def rerank_pairs(pairs_qd: list[tuple[str, str]], model_name: str = "BAAI/bge-reranker-v2-m3",
+                 batch: int = 16, log=None) -> list[float]:
+    """(질문, 문서) 쌍마다 관련도 점수. 캐시로 재실행 시 추론 0회.
+
+    ★ max_length=512 토큰이라 긴 노트는 앞부분만 본다.
+      LLM 판정이 12,000자를 통째로 본 것과 다르다 — 이 차이가 결과에 나타날 수 있다.
+    """
+    todo = [(i, qd) for i, qd in enumerate(pairs_qd)
+            if (hashlib.sha256(f"{qd[0]}\x00{qd[1]}".encode()).hexdigest(), model_name)
+            not in _rerank_cache]
+    if todo:
+        m = get_reranker(model_name)
+        for s_i in range(0, len(todo), batch):
+            chunk = todo[s_i:s_i + batch]
+            scores = m.predict([qd for _, qd in chunk], show_progress_bar=False)
+            for (_, qd), sc in zip(chunk, scores):
+                k = (hashlib.sha256(f"{qd[0]}\x00{qd[1]}".encode()).hexdigest(), model_name)
+                _rerank_cache[k] = float(sc)
+            if log and s_i % (batch * 5) == 0:
+                log(f"  재순위 {s_i + len(chunk)}/{len(todo)}")
+        save_rerank_cache()
+    return [_rerank_cache[(hashlib.sha256(f"{q}\x00{d}".encode()).hexdigest(), model_name)]
+            for q, d in pairs_qd]
