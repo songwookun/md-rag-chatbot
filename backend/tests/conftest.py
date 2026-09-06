@@ -13,7 +13,7 @@
 
 import pytest
 
-from app.adapters import gemini, github, pinecone
+from app.adapters import gemini, github, pinecone, reranker
 from app.config import get_settings
 
 TEST_PASSWORD = "test-password"
@@ -34,10 +34,21 @@ def fake_settings(monkeypatch):
     monkeypatch.setenv("PINECONE_INDEX", "test-index")
 
     # 어댑터는 @lru_cache 로 클라이언트를 들고 있다. 비워야 가짜 키가 반영된다.
-    for mod in (gemini, pinecone, github):
-        for fn in ("_client", "_index"):
+    for mod in (gemini, pinecone, github, reranker):
+        for fn in ("_client", "_index", "_model"):
             if hasattr(mod, fn):
                 getattr(mod, fn).cache_clear()
+
+    # ★ 리랭커 모델(2.3GB)이 테스트에서 로드되는 걸 막는다.
+    #   실제로 한 번 겪었다 — 모킹을 빠뜨린 테스트가 모델을 내려받아 37초가 걸렸다.
+    #   외부 키를 가짜로 덮는 것과 같은 이유다. 안 막으면 조용히 느려지고 CI 에서 터진다.
+    def _no_model():
+        raise RuntimeError(
+            "테스트에서 리랭커 모델을 로드하려 했습니다. "
+            "reranker.score 를 monkeypatch 하거나 rerank_enabled=False 로 두세요."
+        )
+
+    monkeypatch.setattr(reranker, "_model", _no_model)
     # @lru_cache 라 한 번 만들어진 Settings 가 계속 재사용된다 → 비워야 새 값이 반영된다.
     get_settings.cache_clear()
     yield

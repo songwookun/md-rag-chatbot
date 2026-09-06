@@ -84,7 +84,8 @@ tests/test_retrieval.py — 어댑터를 monkeypatch 로 갈아끼워 네트워�
 import asyncio
 import logging
 
-from app.adapters import gemini, github, pinecone
+from app.adapters import gemini, github, pinecone, reranker
+from app.config import get_settings
 from app.schemas.chat import LoadedNote, NoteHit
 
 log = logging.getLogger(__name__)
@@ -94,12 +95,19 @@ log = logging.getLogger(__name__)
 #   실험②에서 R@3 = 1.00 이 나왔으니 5는 여유 있는 쪽이다.
 TOP_K = 5
 
-# ★ 이 파일에서 가장 비싼 한 줄.
+# 임베딩 점수 컷 — 재순위를 끄면(RERANK_ENABLED=false) 이게 쓰인다.
 #   실험②(docs/experiments/02-sweep.md 결정 3):
 #     0.6  — 답이 볼트에 없는 질문 3개가 **전부 통과**했다 (0.686 / 0.655 / 0.639)
 #     0.65 — 3개 모두 차단. 그때 재현율 80%, 오통과율 2.2%
-#   정답의 20%를 놓치는 대가로, 없는 답을 지어내는 걸 막는 값이다.
 SCORE_THRESHOLD = 0.65
+
+# 재순위 점수 컷 — 재순위를 켜면 이게 쓰인다.
+#   ★ 코사인 0.65 와 같은 자가 아니다. 크로스인코더 출력은 시그모이드라 0~1 이지만
+#     분포가 완전히 다르다 — 관련 없는 쌍은 0.000 대에 몰린다.
+#   실험③(질문 47개 · 답없음 28개) 경계:
+#     답있음 최저 0.242  /  답없음 최고 0.173  →  그 사이를 잡는다
+#   이 값에서 보류AUC 1.0000, 층 누수 0/28. 부트스트랩 2000회 전부 1.0.
+RERANK_THRESHOLD = 0.20
 
 # 보류 문구 (TS: chat/route.ts:87-89, 115)
 NO_MATCH_MESSAGE = (
@@ -109,14 +117,39 @@ NO_MATCH_MESSAGE = (
 LOAD_FAILED_MESSAGE = "관련 노트를 찾았지만 원본을 불러오지 못했습니다."
 
 
-def _select_context(hits: list[NoteHit]) -> list[NoteHit]:
-    """검색 결과 중 답변 근거로 쓸 것만 고른다. abstention 이 실제로 일어나는 곳."""
-    # path 가 없으면 원본을 못 읽으므로 근거가 될 수 없다 (정한 것 ③)
-    return [h for h in hits if h.score >= SCORE_THRESHOLD and h.path]
+async def _select_context(question: str, scored: list[tuple[NoteHit, LoadedNote]]) -> list[LoadedNote]:
+    """답변 근거로 쓸 노트만 고른다. **abstention 이 실제로 일어나는 곳.**
+
+    실험③에서 갈아 끼운 자리다. 재순위를 끄면 실험② 시절 동작(임베딩 점수 컷)으로 돌아간다.
+    """
+    settings = get_settings()
+
+    if not settings.rerank_enabled:
+        # 재순위 없이 임베딩 점수로만 자른다 (실험③ 이전 동작)
+        return [note for hit, note in scored if hit.score >= SCORE_THRESHOLD]
+
+    scores = await reranker.score(question, [n.content for _, n in scored])
+
+    # strict=True — 길이가 어긋나면 조용히 잘리는 대신 터진다.
+    # 점수와 노트가 밀리면 엉뚱한 노트를 근거로 답하게 되고, 그건 안 터지는 오류다.
+    picked = [(s, note) for (_, note), s in zip(scored, scores, strict=True)
+              if s >= RERANK_THRESHOLD]
+
+    # ★ 재순위 점수 순으로 정렬해 넘긴다.
+    #   임베딩 순서를 그대로 두면 재순위가 뒤집은 순위가 컨텍스트에 반영되지 않는다.
+    #   실험③에서 R@1 이 0.947 → 1.000 이 된 건 재순위가 1위를 바꿨기 때문이다.
+    picked.sort(key=lambda x: -x[0])
+
+    log.debug("재순위 %s → %d개 통과 (컷 %.2f)",
+              [f"{s:.3f}" for s in scores], len(picked), RERANK_THRESHOLD)
+    return [note for _, note in picked]
 
 
-async def _load_notes(hits: list[NoteHit]) -> list[LoadedNote]:
-    """근거로 고른 노트들의 원본 .md 를 병렬 로드. 실패한 건 빼고 돌려준다."""
+async def _load_notes(hits: list[NoteHit]) -> list[tuple[NoteHit, LoadedNote]]:
+    """후보 노트들의 원본 .md 를 병렬 로드. 실패한 건 빼고 돌려준다.
+
+    ★ (hit, note) 짝으로 돌려준다 — 재순위를 껐을 때 hit.score 로 잘라야 하기 때문이다.
+      본문만 돌려주면 임베딩 점수를 잃어버린다."""
     # ★ return_exceptions 가 없으면 하나 실패에 전체가 취소된다 (정한 것 ⑥)
     results = await asyncio.gather(
         *(github.get_content(h.path) for h in hits),
@@ -130,7 +163,7 @@ async def _load_notes(hits: list[NoteHit]) -> list[LoadedNote]:
             # 전부 실패했을 때 원인을 알 수 있어야 한다
             log.warning("원본 로드 실패, 건너뜁니다: %s (%s)", hit.path, result)
             continue
-        notes.append(LoadedNote(name=hit.title, content=result))
+        notes.append((hit, LoadedNote(name=hit.title, content=result)))
     return notes
 
 
@@ -139,16 +172,21 @@ async def answer(question: str) -> str:
 
     # 검색 실패는 예외로 올린다 — api 층이 Pinecone 안내 문구로 바꾼다
     hits = await pinecone.query(question, TOP_K)
+    # metadata 가 통째로 없는 옛 벡터는 path 가 비어 있다. 원본을 못 읽으므로 근거가 될 수 없다.
+    hits = [h for h in hits if h.path]
+    if not hits:
+        return NO_MATCH_MESSAGE
 
-    context_hits = _select_context(hits)
-    if not context_hits:
+    # ★ 로드가 컷보다 먼저다 — 재순위가 본문을 봐야 하기 때문 (파일 상단 참고)
+    scored = await _load_notes(hits)
+    if not scored:
+        # 찾긴 찾았는데 못 읽은 것 — 아래 보류와 원인이 다르므로 문구를 나눈다
+        return LOAD_FAILED_MESSAGE
+
+    notes = await _select_context(question, scored)
+    if not notes:
         # ★ 여기서 "최고점 하나만이라도 넣어줄까" 하는 유혹을 참는 게 핵심이다.
         #   그 순간 이건 RAG 가 아니라 그냥 챗봇이 된다. LLM 을 부르지 않는다.
         return NO_MATCH_MESSAGE
-
-    notes = await _load_notes(context_hits)
-    if not notes:
-        # 찾긴 찾았는데 못 읽은 것 — 위와 원인이 다르므로 문구를 나눈다 (정한 것 ④)
-        return LOAD_FAILED_MESSAGE
 
     return await gemini.answer_from_notes(question, notes)

@@ -10,7 +10,7 @@ TS 백엔드(`src/lib`, `src/app/api`)를 Python으로 이관한 결과. **이�
 cd backend
 python3.11 -m venv .venv && source .venv/bin/activate   # macOS 기본 python3 는 3.9 라 막힌다
 pip install -U pip
-pip install -e ".[dev]"
+pip install -e ".[dev,rerank]"   # 재순위화 없이: .[dev]
 cp .env.example .env      # 값 채우기
 uvicorn app.main:app --reload --port 8000
 ```
@@ -20,7 +20,7 @@ uvicorn app.main:app --reload --port 8000
 ```bash
 curl localhost:8000/health          # {"status":"ok", ...}
 open http://localhost:8000/docs     # 자동 생성 API 문서
-pytest -q                           # 61 passed
+pytest -q                           # 64 passed
 ```
 
 프론트까지 같이 띄우려면 저장소 루트에서 `npm run dev` (`:3000` → `:8000` 프록시).
@@ -68,6 +68,8 @@ pytest -q                           # 61 passed
 | 임계값 `0.65` | `services/retrieval.py` `SCORE_THRESHOLD` | [실험② 결정 3](../docs/experiments/02-sweep.md) — 0.6 에서는 답 없는 질문 3개가 전부 통과했다 |
 | 차원 `3072` (유지) | `config.py` `EMBEDDING_DIMENSIONS` | [실험② 결정 2](../docs/experiments/02-sweep.md) — 768 을 권하지만 **현재 인덱스가 3072** 라 새 인덱스가 필요하다 |
 | `task_type` 분기 (유지) | `adapters/gemini.py` `embed()` | [실험② 결정 4](../docs/experiments/02-sweep.md) — 요약 기준에서는 현재 조합이 더 높다 |
+| 재순위 임계값 `0.20` | `services/retrieval.py` `RERANK_THRESHOLD` | 실험③ — 답없음 최고 0.173 / 답있음 최저 0.242 사이 |
+| 재순위 문서 자르기 `3000자` | `adapters/reranker.py` `MAX_CHARS` | 실험③ — 3000자까지는 점수 변화 0, 1500자부터 바뀐다 |
 
 `src/lib/pinecone.ts:78` 의 `★ 실측 튜닝값` 주석은 **측정한 사람이 없었다.**
 
@@ -91,12 +93,12 @@ pytest -q                           # 61 passed
 
 | | 방법 |
 |---|---|
-| 서비스 계층 판단 | 테스트 61개. 어댑터를 전부 가짜로 갈아끼워 네트워크 없이 돈다 |
+| 서비스 계층 판단 | 테스트 64개. 어댑터를 전부 가짜로 갈아끼워 네트워크 없이 돈다 |
 | 인증 · 라우팅 · 401/422 | 서버를 띄워 실제 요청으로 확인 |
 | 프록시(쿠키·헤더 전달) | `:3000` → `:8000` 왕복으로 확인 |
 | **외부 SDK 계약** | **실제 Gemini · Pinecone · GitHub 호출로 확인** (2026-09-02) |
 
-마지막 항목이 오래 비어 있었다. 테스트 61개는 전부 어댑터를 모킹한 것이라
+마지막 항목이 오래 비어 있었다. 테스트 64개는 전부 어댑터를 모킹한 것이라
 SDK 응답 모양이 다르면 잡아내지 못한다. 실제로 불러서 저장 → 색인 → 검색 →
 원본 로드 → 답변 왕복이 도는 것까지 확인했다.
 

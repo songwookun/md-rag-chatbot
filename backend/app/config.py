@@ -38,6 +38,15 @@ class Settings(BaseSettings):
     auth_password: str = ""
     auth_secret: str = ""
 
+    # --- 재순위화 (실험③에서 채택) ---
+    #   실험③: 보류AUC 0.9605 → 1.0000, 층 누수 6/28 → 0/28, R@1 0.947 → 1.000.
+    #   대가는 응답 +2.5초. 근거: docs/experiments/03-abstention.md
+    #
+    #   ★ false 로 두면 임베딩 점수만으로 자른다(실험③ 이전 동작).
+    #     torch 가 2GB 라 작은 인스턴스에 배포할 때는 끄는 쪽이 맞을 수 있다.
+    rerank_enabled: bool = True
+    rerank_model: str = "BAAI/bge-reranker-v2-m3"
+
     # --- 런타임 ---
     app_env: str = "development"
 

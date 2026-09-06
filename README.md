@@ -9,7 +9,7 @@
 <img alt="Next.js" src="https://img.shields.io/badge/Next.js_15-000000?logo=nextdotjs&logoColor=white">
 <img alt="Gemini" src="https://img.shields.io/badge/Gemini-8E75B2?logo=googlegemini&logoColor=white">
 <img alt="Pinecone" src="https://img.shields.io/badge/Pinecone-000000?logo=pinecone&logoColor=white">
-<img alt="tests" src="https://img.shields.io/badge/tests-61_passing-3fb950">
+<img alt="tests" src="https://img.shields.io/badge/tests-64_passing-3fb950">
 </p>
 
 **[한국어](#한국어) · [English](#english)**
@@ -237,7 +237,7 @@ async def test_abstains_and_never_calls_llm_when_all_below_threshold():
 cd backend
 python3.11 -m venv .venv && source .venv/bin/activate   # 3.11 이상 필요
 pip install -U pip                                      # 편집 설치(PEP 660)에 최신 pip 권장
-pip install -e ".[dev]"
+pip install -e ".[dev,rerank]"   # 재순위화 없이 쓰려면 .[dev] 만
 cp .env.example .env      # 키 채우기
 uvicorn app.main:app --reload --port 8000
 ```
@@ -374,6 +374,6 @@ Negative means **no threshold can be correct for both cases.** The cause: all 20
 
 **Running it yourself** — no API keys are included in this repo (`.env.example` ships empty). You bring your own Gemini key, Pinecone index, and GitHub vault repo + token; all three have free tiers, and your notes live in your own repository. See the Korean section's collapsed setup guide.
 
-61 tests, all runnable without network access.
+64 tests, all runnable without network access.
 
 MIT License.
