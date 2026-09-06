@@ -7,7 +7,7 @@
 |---|---|---|---|
 | 실험① | [01-task-type.md](01-task-type.md) | [`notebooks/01_task_type.ipynb`](../../notebooks/01_task_type.ipynb) | `task_type` 분기 가설 기각 — **다만 이 결론은 실험②에서 뒤집혔다** |
 | 실험② | [02-sweep.md](02-sweep.md) | [`notebooks/02_sweep.ipynb`](../../notebooks/02_sweep.ipynb) | 설정 90여 개 비교 → 바꿀 것은 임계값 `0.65`와 차원 `768` 둘뿐 |
-| 실험③ | [03-abstention.md](03-abstention.md) | [`notebooks/03_abstention.ipynb`](../../notebooks/03_abstention.ipynb) | **abstention 이 풀렸다** — 크로스인코더 리랭커로 보류AUC `1.0000` |
+| 실험③ | [03-abstention.md](03-abstention.md) | [`notebooks/03_abstention.ipynb`](../../notebooks/03_abstention.ipynb) | **abstention 이 풀렸다** — 크로스인코더 리랭커로 보류AUC `1.0000` (단, 실험에 쓴 문장 표현 기준. 표현을 바꾸면 무너진다) |
 
 ## 왜 틀린 기록을 남기나
 
