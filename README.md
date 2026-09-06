@@ -75,13 +75,14 @@ const THRESHOLD = 0.6;
       ├─ ① 벡터 검색          질문을 임베딩 → 유사도 상위 5개
       │                       ※ 어댑터는 점수를 거르지 않고 그대로 넘긴다
       │
-      ├─ ② 컷 (abstention)    0.65 미만은 근거로 쓰지 않는다
+      ├─ ② 원본 로드           metadata.path 로 GitHub에서 .md 원문을 병렬 로드
+      │                        일부 실패해도 나머지로 답한다
+      │
+      ├─ ③ 재순위 + 컷          크로스인코더가 질문과 본문을 **같이** 보고 다시 점수를 매긴다
+      │        │                0.20 미만은 근거로 쓰지 않는다
       │        │
       │        └─ 남은 게 0개 → **LLM을 아예 호출하지 않고 보류**
       │                          "관련된 내용을 찾지 못했습니다"
-      │
-      ├─ ③ 원본 로드           metadata.path 로 GitHub에서 .md 원문을 병렬 로드
-      │                        일부 실패해도 나머지로 답한다
       │
       └─ ④ 답변 생성           원문만 컨텍스트로 넣고, 외부 지식 사용을 프롬프트로 금지
 ```
@@ -137,9 +138,7 @@ const THRESHOLD = 0.6;
 
 ---
 
-## 아직 풀지 못한 문제
-
-**임계값만으로는 abstention이 완성되지 않습니다.**
+## 임계값만으로는 풀리지 않았던 문제 — 그리고 어떻게 풀었나
 
 측정한 90여 개 설정 **전부** 아래 값이 음수였습니다.
 
@@ -148,13 +147,36 @@ const THRESHOLD = 0.6;
 최선의 설정에서도  −0.017
 ```
 
-음수라는 것은 **어떤 임계값을 골라도 둘 중 하나는 반드시 틀린다**는 뜻입니다. 원인은 노트 20개가 전부 AI·개발 주제라 주제가 인접한 노트가 높게 잡히는 것입니다.
+음수라는 것은 **어떤 임계값을 골라도 둘 중 하나는 반드시 틀린다**는 뜻입니다.
+원인은 노트 20개가 전부 AI·개발 주제라 주제가 인접한 노트가 높게 잡히는 것입니다.
 
 > **임베딩은 "주제가 비슷한가"를 재지, "답이 있는가"를 재지 않습니다.**
 
-현재 0.65는 최선의 임시방편이고 해결이 아닙니다. 다음 단계는 재순위화(rerank) / 하이브리드 검색(BM25) / LLM 판정 중 무엇이 효과적인지 재는 것입니다. 그래서 컷 로직을 `_select_context()` 한 함수로 분리해 **갈아 끼울 자리를 남겨 두었습니다.**
+### 세 가지를 재봤습니다
 
----
+| 기법 | 보류AUC | 결과 |
+|---|---|---|
+| 임베딩 단독 (기존) | 0.9605 | 28개 중 6개가 뚫림 |
+| 하이브리드 검색 (BM25) | 0.8299 | **오히려 나빠짐** |
+| LLM 판정 | 0.9850 | 차단은 뛰어나지만 6배 느리고 매 요청 API 비용 |
+| **크로스인코더 리랭커** | **1.0000** | **28개 전부 차단.** 부트스트랩 2000회 전부 1.0 |
+
+**어휘 기반 접근(BM25·희귀토큰)은 전부 실패했습니다.** 뚫리는 질문들이
+*"벡터 인덱스"*, *"RAG 청킹"* 처럼 **볼트 어휘를 실제로 쓰기** 때문입니다.
+*"없는 말을 찾는"* 신호로는 잡을 수 없었습니다.
+
+질문과 문서를 **같이 보는** 수단만 통했고, 그중 리랭커가 LLM 판정보다
+빠르고(+2.5초 vs +15초) API 비용이 0이었습니다.
+abstention을 고치면서 검색 품질도 같이 올랐습니다 (R@1 `0.947 → 1.000`).
+
+전체 기록: [`docs/experiments/`](docs/experiments/) · [`notebooks/03_abstention.ipynb`](notebooks/03_abstention.ipynb)
+
+### 대가와 남은 문제
+
+응답이 **+2.5초** 늘어납니다. `RERANK_ENABLED=false` 로 끄면 기존 동작(임계값 `0.65`)으로 돌아갑니다.
+
+그리고 **재순위 시간이 요청마다 2.2~10초로 흔들립니다.** MPS 스케줄링으로 보이지만
+원인을 확정하지 못했습니다. 로컬에서는 감수할 만하지만 배포 전에 풀어야 합니다.
 
 ## 구조
 
@@ -166,7 +188,7 @@ backend/                 Python (FastAPI) — 백엔드 전부
       intent.py            저장이냐 질문이냐
       ingest.py            저장 파이프라인 (부분 실패 허용)
       retrieval.py         RAG + abstention   ← 가장 중요한 파일
-    adapters/            외부 서비스 경계 — GitHub / Gemini / Pinecone
+    adapters/            외부 서비스 경계 — GitHub / Gemini / Pinecone / 리랭커
     core/                공용 — HMAC 토큰 · 마크다운 조립 · 에러 문구 표
   tests/                 61개. 외부 호출 없이 전부 실행
 
@@ -274,11 +296,20 @@ curl -b cookie.txt -X POST localhost:3000/api/sync
 | `AUTH_PASSWORD` | backend | ✓ | 로그인 비밀번호 (서명 키 겸용) |
 | `AUTH_SECRET` | backend | | 서명 전용 시크릿 (없으면 `AUTH_PASSWORD` 재사용) |
 | `EMBEDDING_DIMENSIONS` | backend | | 기본 3072. 인덱스 차원과 반드시 일치 |
+| `RERANK_ENABLED` | backend | | 기본 `true`. `false` 면 torch 없이 동작 |
+| `RERANK_MODEL` | backend | | 기본 `BAAI/bge-reranker-v2-m3` |
 | `BACKEND_URL` | frontend | | 기본 `http://localhost:8000` |
 
-**튜닝**
-- 유사도 임계값: `backend/app/services/retrieval.py`의 `SCORE_THRESHOLD` (기본 `0.65` — 실측값)
-- 후보 개수: 같은 파일의 `TOP_K` (기본 5)
+**튜닝** — 전부 `backend/app/services/retrieval.py`
+
+| 값 | 기본 | 근거 |
+|---|---|---|
+| `RERANK_THRESHOLD` | `0.20` | 실험③ — 답없음 최고 0.173 / 답있음 최저 0.242 사이 |
+| `SCORE_THRESHOLD` | `0.65` | 실험② — 재순위를 끌 때 쓰이는 임베딩 컷 |
+| `TOP_K` | `5` | 재순위에 넘길 후보 수 |
+
+- **재순위 끄기**: `RERANK_ENABLED=false` — torch 2GB 를 안 쓰는 대신 `SCORE_THRESHOLD` 로 자릅니다.
+  작은 인스턴스에 배포할 때 필요합니다.
 
 **배포 주의** — 프론트(Next)와 백엔드(FastAPI)를 각각 호스팅해야 합니다. 프론트만 Vercel에 올리면 `BACKEND_URL`이 가리킬 곳이 필요합니다.
 
@@ -323,8 +354,9 @@ The point of this repo isn't "I built a RAG app." It's **"do I know why the numb
                 Pinecone: embedding of the summary only, metadata.path → pointer to original
 
 [Ask]   question → embed → top-k similarity (adapter does NOT filter)
-                 → cut below 0.65 → if nothing remains, **never call the LLM**, abstain
                  → load original .md from GitHub via metadata.path (partial failure tolerated)
+                 → cross-encoder rerank, cut below 0.20
+                   → if nothing remains, **never call the LLM**, abstain
                  → answer from originals only, external knowledge forbidden by prompt
 ```
 
@@ -363,7 +395,23 @@ Negative means **no threshold can be correct for both cases.** The cause: all 20
 
 > **Embeddings measure "is this topically similar", not "does this contain the answer."**
 
-0.65 is the best available stopgap, not a solution. Next step is measuring rerankers vs hybrid (BM25) vs LLM judging — which is why the cut lives in one isolated `_select_context()` function, ready to be swapped.
+**Solved in experiment 3.** I measured rerankers vs hybrid (BM25) vs LLM judging:
+
+| Technique | Abstention AUC | Outcome |
+|---|---|---|
+| Embedding only (before) | 0.9605 | 6 of 28 leaked |
+| Hybrid (BM25) | 0.8299 | **worse** |
+| LLM judging | 0.9850 | great at blocking, but 6× slower and costs API per request |
+| **Cross-encoder reranker** | **1.0000** | **all 28 blocked.** 2000 bootstrap resamples, all 1.0 |
+
+Lexical signals all failed — the leaking questions *do* use vault vocabulary
+(*"vector index"*, *"RAG chunking"*), so "find the missing word" can't catch them.
+Only looking at query and document **together** worked, and the reranker beat LLM judging
+on both latency (+2.5s vs +15s) and cost (zero API calls).
+Fixing abstention also improved retrieval (R@1 `0.947 → 1.000`).
+
+Cost: +2.5s per answer, and rerank latency currently varies 2.2–10s (cause not yet identified).
+`RERANK_ENABLED=false` reverts to the previous threshold-only behaviour.
 
 ## Architecture notes
 
