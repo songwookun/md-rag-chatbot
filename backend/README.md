@@ -8,7 +8,8 @@ TS 백엔드(`src/lib`, `src/app/api`)를 Python으로 이관한 결과. **이�
 
 ```bash
 cd backend
-python -m venv .venv && source .venv/bin/activate   # Python 3.11+
+python3.11 -m venv .venv && source .venv/bin/activate   # macOS 기본 python3 는 3.9 라 막힌다
+pip install -U pip
 pip install -e ".[dev]"
 cp .env.example .env      # 값 채우기
 uvicorn app.main:app --reload --port 8000

@@ -235,11 +235,15 @@ async def test_abstains_and_never_calls_llm_when_all_below_threshold():
 **1. 백엔드**
 ```bash
 cd backend
-python -m venv .venv && source .venv/bin/activate
+python3.11 -m venv .venv && source .venv/bin/activate   # 3.11 이상 필요
+pip install -U pip                                      # 편집 설치(PEP 660)에 최신 pip 권장
 pip install -e ".[dev]"
 cp .env.example .env      # 키 채우기
 uvicorn app.main:app --reload --port 8000
 ```
+
+> macOS 기본 `python3` 는 3.9 라 `python -m venv` 로 만들면 설치가 막힙니다.
+> `python3.11` (또는 3.12/3.13)을 명시하세요.
 확인: `curl localhost:8000/health` · API 문서: `http://localhost:8000/docs`
 
 **2. 프론트엔드** (다른 터미널)

@@ -43,14 +43,31 @@ async def test_length_boundary_is_inclusive(length, expected):
     assert await intent.classify(text) == expected
 
 
-async def test_strips_before_measuring():
-    """★ 공백을 안 벗기면 조용히 틀리는 두 경우.
+async def test_strips_before_measuring(monkeypatch):
+    """★ 공백을 안 벗기면 조용히 틀리는 경우.
 
-    이 테스트가 없으면 "짧은 메모"가 왜 저장으로 갔는지 영영 모른다.
+    이 테스트는 원래 `classify(...) == "save"` 만 확인했는데, 그건 아무것도 못 지켰다.
+      - strip 이 있으면  → 5자로 줄어 규칙을 다 통과 → LLM 폴백이 "save" 를 돌려준다
+      - strip 이 없으면  → 165자라 길이 규칙에서 "save"
+    **어느 쪽이든 "save" 라 통과했다.** 게다가 폴백이 모킹돼 있지 않아
+    매 실행마다 실제 Gemini 를 호출하고 있었다.
+
+    그래서 결과가 아니라 **폴백에 무엇이 넘어갔는지**를 본다.
+    strip 이 빠지면 길이 규칙에서 끝나 spy 가 아예 안 불린다.
     """
-    padded_short = " " * 20 + "짧은 메모" + " " * 140
-    assert len(padded_short) >= intent.LONG_TEXT_THRESHOLD  # strip 안 하면 save 로 샌다
-    assert await intent.classify(padded_short) == "save"  # LLM 안 부르고 규칙에서 끝나야 함
+    seen = {}
+
+    async def spy(text):
+        seen["text"] = text
+        return "save"
+
+    monkeypatch.setattr(intent.gemini, "classify_ambiguous", spy)
+
+    padded = " " * 20 + "짧은 메모" + " " * 140
+    assert len(padded) >= intent.LONG_TEXT_THRESHOLD  # strip 없으면 길이 규칙에 걸린다
+
+    assert await intent.classify(padded) == "save"
+    assert seen["text"] == "짧은 메모"   # ← strip 이 빠지면 KeyError 로 실패한다
 
 
 async def test_trailing_space_does_not_break_dollar_anchor(monkeypatch):
