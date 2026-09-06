@@ -83,6 +83,7 @@ tests/test_retrieval.py — 어댑터를 monkeypatch 로 갈아끼워 네트워�
 
 import asyncio
 import logging
+import time
 
 from app.adapters import gemini, github, pinecone, reranker
 from app.config import get_settings
@@ -168,25 +169,53 @@ async def _load_notes(hits: list[NoteHit]) -> list[tuple[NoteHit, LoadedNote]]:
 
 
 async def answer(question: str) -> str:
-    """질문에 답한다. 근거가 없으면 지어내지 않고 보류 문구를 돌려준다."""
+    """질문에 답한다. 근거가 없으면 지어내지 않고 보류 문구를 돌려준다.
 
-    # 검색 실패는 예외로 올린다 — api 층이 Pinecone 안내 문구로 바꾼다
-    hits = await pinecone.query(question, TOP_K)
-    # metadata 가 통째로 없는 옛 벡터는 path 가 비어 있다. 원본을 못 읽으므로 근거가 될 수 없다.
-    hits = [h for h in hits if h.path]
-    if not hits:
-        return NO_MATCH_MESSAGE
+    ★ 구간별 시간을 남긴다 — 느릴 때 **어디가** 느린지 나눠 봐야 하기 때문이다.
+      합계만 보고 재순위 탓을 했다가 틀린 적이 있다. 실측으로는 재순위가
+      문서당 ~0.3초로 선형이고, 흔들리는 쪽은 네트워크 구간이었다.
+    """
+    t = time.perf_counter()
+    laps: list[tuple[str, float]] = []
 
-    # ★ 로드가 컷보다 먼저다 — 재순위가 본문을 봐야 하기 때문 (파일 상단 참고)
-    scored = await _load_notes(hits)
-    if not scored:
-        # 찾긴 찾았는데 못 읽은 것 — 아래 보류와 원인이 다르므로 문구를 나눈다
-        return LOAD_FAILED_MESSAGE
+    def lap(name: str) -> None:
+        """직전 구간 소요를 기록하고 시계를 리셋한다."""
+        nonlocal t
+        now = time.perf_counter()
+        laps.append((name, now - t))
+        t = now
 
-    notes = await _select_context(question, scored)
-    if not notes:
-        # ★ 여기서 "최고점 하나만이라도 넣어줄까" 하는 유혹을 참는 게 핵심이다.
-        #   그 순간 이건 RAG 가 아니라 그냥 챗봇이 된다. LLM 을 부르지 않는다.
-        return NO_MATCH_MESSAGE
+    # ★ finally 로 감싼다 — 보류·로드실패·예외로 빠져나가도 기록이 남아야 한다.
+    #   오히려 보류가 가장 빠른 경로라 비교 기준이 된다.
+    try:
+        # 검색 실패는 예외로 올린다 — api 층이 Pinecone 안내 문구로 바꾼다
+        hits = await pinecone.query(question, TOP_K)
+        lap("검색")
+        # metadata 가 통째로 없는 옛 벡터는 path 가 비어 있다. 원본을 못 읽으므로 근거가 될 수 없다.
+        hits = [h for h in hits if h.path]
+        if not hits:
+            return NO_MATCH_MESSAGE
 
-    return await gemini.answer_from_notes(question, notes)
+        # ★ 로드가 컷보다 먼저다 — 재순위가 본문을 봐야 하기 때문 (파일 상단 참고)
+        scored = await _load_notes(hits)
+        lap("로드")
+        if not scored:
+            # 찾긴 찾았는데 못 읽은 것 — 아래 보류와 원인이 다르므로 문구를 나눈다
+            return LOAD_FAILED_MESSAGE
+
+        notes = await _select_context(question, scored)
+        lap("재순위")
+        if not notes:
+            # ★ 여기서 "최고점 하나만이라도 넣어줄까" 하는 유혹을 참는 게 핵심이다.
+            #   그 순간 이건 RAG 가 아니라 그냥 챗봇이 된다. LLM 을 부르지 않는다.
+            return NO_MATCH_MESSAGE
+
+        out = await gemini.answer_from_notes(question, notes)
+        lap("생성")
+        return out
+    finally:
+        log.info(
+            "단계별 %s | 합계 %.2f초",
+            " · ".join(f"{n} {d:.2f}" for n, d in laps),
+            sum(d for _, d in laps),
+        )

@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     #     torch 가 2GB 라 작은 인스턴스에 배포할 때는 끄는 쪽이 맞을 수 있다.
     rerank_enabled: bool = True
     rerank_model: str = "BAAI/bge-reranker-v2-m3"
+    #   ★ 기본이 cpu 인 이유 — 빨라서가 아니라 **흔들리지 않아서**다. 실측(5쌍 x 3000자):
+    #       cpu  중앙 2.31초 · 최대 2.41초   폭 1.0배
+    #       mps  중앙 1.92초 · 최대 2.06초   폭 1.2배 — 그런데 다른 회차에서 7.9초까지 튀었다
+    #     중앙값은 mps 가 0.3초 빠르지만 목표(10초)를 깨는 건 중앙값이 아니라 꼬리다.
+    #     그리고 도커/클라우드에도, 이 저장소를 클론한 대부분의 기계에도 mps 는 없다.
+    #     기본을 cpu 로 두면 README 의 숫자가 그 사람들에게도 참이 된다.
+    #     맥에서 조금 더 빠르게 쓰고 싶으면 RERANK_DEVICE=mps.
+    rerank_device: str = "cpu"
 
     # --- 런타임 ---
     app_env: str = "development"

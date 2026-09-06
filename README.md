@@ -161,6 +161,9 @@ const THRESHOLD = 0.6;
 | LLM 판정 | 0.9850 | 차단은 뛰어나지만 훨씬 느리고 매 요청 API 비용 |
 | **크로스인코더 리랭커** | **1.0000** | **28개 전부 차단.** 부트스트랩 2000회 전부 1.0 |
 
+> 단, 이 `1.0000` 은 **실험에 쓴 47개 문장 표현**에 대한 값입니다. 같은 뜻을 다르게 물으면
+> 무너집니다 — 아래 `표현 민감도` 참고.
+
 **어휘 기반 접근(BM25·희귀토큰)은 전부 실패했습니다.** 뚫리는 질문들이
 *"벡터 인덱스"*, *"RAG 청킹"* 처럼 **볼트 어휘를 실제로 쓰기** 때문입니다.
 *"없는 말을 찾는"* 신호로는 잡을 수 없었습니다.
@@ -171,15 +174,51 @@ abstention을 고치면서 검색 품질도 같이 올랐습니다 (R@1 `0.947 �
 
 전체 기록: [`docs/experiments/`](docs/experiments/) · [`notebooks/03_abstention.ipynb`](notebooks/03_abstention.ipynb)
 
-### 대가와 남은 문제
+### 대가
 
-응답이 느려집니다 — 재순위에 **요청마다 +2~10초**가 붙고, 첫 질문은 14.8초였습니다.
+응답에 재순위 시간이 붙습니다. 구간별 실측(질문 9회, CPU 기준):
+
+| 구간 | 시간 |
+|---|---|
+| 검색 (임베딩 + Pinecone) | 0.7 ~ 2.9초 |
+| 원본 로드 (GitHub 5개 병렬) | 0.3 ~ 0.8초 |
+| **재순위** | **2.9 ~ 5.2초** |
+| 생성 (Gemini) | 2.3 ~ 3.8초 |
+| **합계** | **5.2 ~ 10.6초** |
+
+보류로 끝나는 질문은 생성을 안 부르므로 5~6초입니다.
 `RERANK_ENABLED=false` 로 끄면 기존 동작(임계값 `0.65`)으로 돌아갑니다.
 
-문제는 평균이 아니라 **폭**입니다. 같은 질문인데도 편차가 이만큼 납니다.
-MPS가 텐서 모양마다 재컴파일하는 것으로 보이지만 **원인을 확정하지 못했습니다.**
-워밍업을 실제 모양으로 고친 뒤에도 남아 있습니다.
-로컬에서는 감수할 만하지만 **배포 전에 풀어야 합니다.**
+### 표현 민감도 — 아직 못 푼 것
+
+서버에 올려 직접 물어보다 발견했습니다. 같은 뜻을 네 가지로 물으면 (컷 `0.20`):
+
+| 질문 | 최고점 | 결과 |
+|---|---|---|
+| LLM 토큰 비용 계산해서 월 예산 잡는 법 | 0.1728 | 보류 |
+| LLM 토큰 비용 계산해서 월 예산 잡는법 **알려줘** | **0.2879** | 통과 |
+| LLM 토큰 비용 계산법 | 0.8369 | 통과 |
+| 토큰 비용 어떻게 계산해? | 0.3550 | 통과 |
+
+**"알려줘" 세 글자가 점수를 +0.115 움직였는데, 경계 여유는 0.069입니다.**
+표현 하나가 만드는 흔들림이 경계 전체보다 큽니다. 부트스트랩 2000회로도
+이건 안 보입니다 — 같은 문장을 다시 뽑을 뿐 문장을 바꾸지 않기 때문입니다.
+
+다만 **지어내지는 않았습니다.** 통과한 답변도 "월 예산 잡는 방법은 명시되어 있지
+않습니다"라고 먼저 밝히고 노트에 실제로 있는 계산식만 인용했습니다.
+그리고 `LLM 토큰 비용 계산법`이 0.8369인 건 오판이 아닙니다 — 그 노트에 계산식이 있습니다.
+
+임계값으로는 못 풉니다. `0.2879`를 막으려면 컷을 `0.30`으로 올려야 하는데
+**답있음 최저가 `0.242`**라 진짜 답을 보류하게 됩니다. 다음 실험 과제입니다.
+
+### 지연
+
+처음에는 이 지연이 요청마다 2.2~10초로 흔들렸고, **MPS가 텐서 모양마다
+재컴파일하기 때문이라고 적었습니다. 재보니 틀렸습니다.** 워밍업을 배치 크기별로
+전부 반복해도, 패딩을 512로 고정해도 달라지지 않았습니다. 진짜 원인은
+**MPS 추론을 메인 스레드 밖(`to_thread`)에서 돌린 것**이었고,
+기본 장치를 CPU로 바꿔(`RERANK_DEVICE=cpu`) 폭을 1.0배로 줄였습니다.
+중앙값은 0.3초 느리지만 꼬리가 사라집니다 — 그리고 도커/클라우드에는 MPS가 없습니다.
 
 ## 구조
 
@@ -301,6 +340,7 @@ curl -b cookie.txt -X POST localhost:3000/api/sync
 | `EMBEDDING_DIMENSIONS` | backend | | 기본 3072. 인덱스 차원과 반드시 일치 |
 | `RERANK_ENABLED` | backend | | 기본 `true`. `false` 면 torch 없이 동작 |
 | `RERANK_MODEL` | backend | | 기본 `BAAI/bge-reranker-v2-m3` |
+| `RERANK_DEVICE` | backend | | 기본 `cpu`. 맥에서 조금 빠르게 하려면 `mps` (편차 있음) |
 | `BACKEND_URL` | frontend | | 기본 `http://localhost:8000` |
 
 **튜닝** — 전부 `backend/app/services/retrieval.py`
@@ -410,10 +450,21 @@ Negative means **no threshold can be correct for both cases.** The cause: all 20
 Lexical signals all failed — the leaking questions *do* use vault vocabulary
 (*"vector index"*, *"RAG chunking"*), so "find the missing word" can't catch them.
 Only looking at query and document **together** worked, and the reranker beat LLM judging
-on both latency (+2.5s vs +15s) and cost (zero API calls).
+on both latency and cost (zero API calls).
 Fixing abstention also improved retrieval (R@1 `0.947 → 1.000`).
 
-Cost: +2.5s per answer, and rerank latency currently varies 2.2–10s (cause not yet identified).
+**Caveat:** that `1.0000` holds for the 47 exact phrasings used in the experiment.
+Rephrasing breaks it — adding three characters meaning "tell me" to one refused question
+moved its score from `0.1728` to `0.2879`, past the `0.20` cut, while the separation margin
+is only `0.069`. Bootstrapping cannot catch this: it resamples sentences, it does not reword
+them. The answer still did not hallucinate (it stated up front that the notes do not cover
+the budgeting method), but it did not abstain either. Raising the cut is not a fix — the
+lowest answerable score is `0.242`. Left as the next experiment.
+
+Cost: reranking adds 2.9–5.2s, for 5.2–10.6s end to end (5–6s when the query is refused).
+Latency initially varied 2.2–10s; I attributed that to MPS recompiling per tensor shape,
+**which measurement disproved** — the real cause was running MPS inference off the main
+thread. Defaulting to `RERANK_DEVICE=cpu` removed the tail.
 `RERANK_ENABLED=false` reverts to the previous threshold-only behaviour.
 
 ## Architecture notes

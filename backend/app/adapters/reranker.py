@@ -40,7 +40,6 @@ def _model():
     """
     try:
         from sentence_transformers import CrossEncoder  # noqa: PLC0415
-        import torch  # noqa: PLC0415
     except ImportError as exc:  # pragma: no cover - 설치 안내
         raise RuntimeError(
             "재순위화가 켜져 있는데 리랭커 의존성이 없습니다. "
@@ -48,9 +47,10 @@ def _model():
         ) from exc
 
     settings = get_settings()
-    device = "mps" if torch.backends.mps.is_available() else "cpu"
-    log.info("리랭커 로드: %s on %s", settings.rerank_model, device)
-    return CrossEncoder(settings.rerank_model, device=device, max_length=512)
+    # ★ 장치를 자동 감지하지 않고 설정에서 받는다 — 감지하면 기계마다 다른 성능이 나와
+    #   측정값을 문서에 적을 수 없다. 기본 cpu 의 근거는 config.py 참고.
+    log.info("리랭커 로드: %s on %s", settings.rerank_model, settings.rerank_device)
+    return CrossEncoder(settings.rerank_model, device=settings.rerank_device, max_length=512)
 
 
 async def score(question: str, documents: list[str]) -> list[float]:
