@@ -3,7 +3,7 @@
 > 마크다운 노트를 근거로만 답하는 개인 지식 검색 챗봇.
 > **AI가 "실측 튜닝값"이라 써놓은 숫자를 직접 재보니 전부 틀렸다** — 그래서 백엔드를 다시 짰다.
 >
-> 📝 개발기: [「"실측 튜닝값 0.6"이라던 AI의 주석, 직접 재보니 틀렸다」](https://velog.io/@songwookun/rag-threshold-0-6)
+> 📝 블로그: [「"실측 튜닝값 0.6"이라던 AI의 주석, 직접 재보니 틀렸다」](https://velog.io/@songwookun/rag-threshold-0-6)
 
 <p>
 <img alt="Python" src="https://img.shields.io/badge/Python_3.11+-3776AB?logo=python&logoColor=white">
